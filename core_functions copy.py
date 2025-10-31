@@ -226,107 +226,68 @@ def capture_excel_sheets(target_file, output_dir, base_filename):
 
 def capture_word_document(target_file, output_dir, base_filename):
     """
-    [수정] Word 파일을 '한 페이지' 보기로 열고,
-    'COM API(GoTo)' + '파일 해시 비교'로 모든 페이지를 캡처 (pynput 제거)
+    Word 파일을 (DRM이 걸린) 임시 PDF로 변환한 후,
+    capture_pdf_document 함수를 호출하여 캡처를 수행
     """
-    output_path = os.path.join(os.path.abspath(output_dir), base_filename + "_Word")
-    os.makedirs(output_path, exist_ok=True)
-    
+    # [수정] 1. COM 초기화
     pythoncom.CoInitialize()
+    
     word = None
     document = None
-    page_count = 0
-    prev_file_hash = None
-    # keyboard = Controller() # [수정] pynput 제거
-
-    # Word VBA 상수 정의
-    wdGoToPage = 1
-    wdGoToNext = 2
-
+    
+    # [수정] 2. 임시 PDF 파일 경로 생성
+    temp_pdf_path = os.path.join(tempfile.gettempdir(), f"{base_filename}_temp.pdf")
+    print(f"[DEBUG] 임시 PDF 경로 설정: {temp_pdf_path}")
+    
     try:
+        # [수정] 3. Word를 열고 PDF로 '다른 이름으로 저장'
         print("[DEBUG] 1. Word Dispatch 및 Open 시도...")
         word = Dispatch("Word.Application")
-        word.Visible = True
+        word.Visible = False # 백그라운드에서 실행
         file_path = os.path.abspath(target_file)
         document = word.Documents.Open(file_path)
         print("[DEBUG] 1. Open 성공.")
 
-        hwnd = win32gui.FindWindow("OpusApp", None)
-        if hwnd:
-            win32gui.ShowWindow(hwnd, win32con.SW_SHOWMAXIMIZED)
-            win32gui.SetForegroundWindow(hwnd)
-            time.sleep(1.0) 
-        else:
-            raise Exception("Word 윈도우 핸들을 찾을 수 없습니다. (클래스: OpusApp)")
-
-        try:
-            print("[DEBUG] 2. '한 페이지' 보기 모드로 변경 시도...")
-            word.ActiveWindow.View.Zoom.PageFit = 1 
-            print("[DEBUG] 2. 보기 모드 변경 성공.")
-        except Exception as e:
-            print(f"[WARN] 보기 모드 변경 실패 (오류: {e})")
-            
-        print("[DEBUG] Word 페이지 캡처 루프 시작 (파일 해시 비교 방식)...")
-        
-        for i in range(1, 501): # 최대 500페이지
-            
-            print(f"[DEBUG] Word Page-{i} 캡처 시도...")
-            try:
-                # [수정] 캡처 직전 포커스 보장
-                win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.2) # 포커스 이동 대기
-                screenshot = capture_active_window(hwnd)
-            except Exception as capture_err:
-                print(f"[WARN] 캡처 실패(오류: {capture_err}). 루프를 중단합니다.")
-                break
-            
-            output_file_path = os.path.join(output_path, f"{base_filename}_page_{i:03}.png")
-            screenshot.save(output_file_path, "PNG")
-            
-            current_file_hash = _get_file_hash(output_file_path)
-            
-            print(f"[DEBUG] Page-{i} 비교: PrevHash={prev_file_hash}, CurrHash={current_file_hash}")
-
-            if i > 1 and prev_file_hash == current_file_hash:
-                print(f"[DEBUG] Page-{i}가 이전 페이지와 파일 해시가 동일하여 캡처를 중지합니다 (문서 끝).")
-                # [수정] PDF와 동일하게 중복 파일 삭제 로직으로 변경
-                try:
-                    os.remove(output_file_path)
-                    print(f"[DEBUG] 중복 저장된 {output_file_path} 파일을 삭제했습니다.")
-                except Exception as e:
-                    print(f"[WARN] 중복 파일 삭제 실패: {e}")
-                break # 루프 중단
-            
-            prev_file_hash = current_file_hash
-            page_count += 1
-            print(f"[DEBUG] Word Page-{i} 캡처 및 저장 완료.")
-            
-            # --- [핵심 수정] ---
-            # 5. PageDown 키 전송 대신, Word COM API로 페이지 이동
-            print(f"[DEBUG] COM API로 다음 페이지 이동 시도 (GoTo Page Next)...")
-            try:
-                # Selection.GoTo(What, Which, Count, Name)
-                # What=wdGoToPage(1), Which=wdGoToNext(2)
-                document.Application.Selection.GoTo(wdGoToPage, wdGoToNext) 
-                time.sleep(1.0) # 페이지 렌더링 대기 (넉넉하게 1초)
-            except Exception as e:
-                # COM 오류 발생 시 (예: 문서 끝 도달)
-                print(f"[DEBUG] COM API 페이지 이동 실패 (문서 끝 추정: {e}). 루프를 중단합니다.")
-                break
-            # --- [수정 끝] ---
+        print("[DEBUG] 2. PDF로 SaveAs 시도... (wdFormatPDF = 17)")
+        # (VBA 상수 wdFormatPDF = 17)
+        document.SaveAs(temp_pdf_path, FileFormat=17)
+        print("[DEBUG] 2. 임시 PDF 저장 성공.")
 
     except Exception as e:
-        raise RuntimeError(f"Word 변환 중 오류 발생: {e}")
-
+        print(f"\n[!!!] Word -> PDF 변환 중 심각한 오류 발생: {e}\n")
+        raise RuntimeError(f"Word를 PDF로 자동 저장하는 중 오류 발생: {e}")
+    
     finally:
-        print("[DEBUG] 6. finally 블록 실행 (정리 시작)")
+        # [수정] 4. Word 프로세스 즉시 종료
         if document:
             document.Close(False) 
         if word:
             word.Quit()
         pythoncom.CoUninitialize()
+        print("[DEBUG] 3. Word 종료 완료.")
 
-    return f"Word 문서 {page_count}페이지 이미지를 저장 완료!\n{output_path}"
+    # --- [수정] 5. PDF 캡처 로직 호출 ---
+    # 이제 임시 PDF 파일을 대상으로, 기존의 PDF 캡처 함수를 호출
+    print(f"[DEBUG] 4. capture_pdf_document 함수 호출 (대상: {temp_pdf_path})")
+    try:
+        # (중요) PDF 캡처 함수가 "Word"가 아닌 "PDF" 폴더를 생성하도록 base_filename 수정
+        pdf_base_filename = base_filename + "_Word"
+        
+        # 기존 PDF 캡처 함수 재사용
+        result_msg = capture_pdf_document(temp_pdf_path, output_dir, pdf_base_filename)
+        
+    finally:
+        # [수정] 6. PDF 캡처가 성공하든 실패하든, 임시 PDF 파일 삭제
+        if os.path.exists(temp_pdf_path):
+            try:
+                os.remove(temp_pdf_path)
+                print(f"[DEBUG] 5. 임시 PDF 파일 삭제 완료: {temp_pdf_path}")
+            except Exception as e:
+                print(f"[WARN] 임시 PDF 파일 삭제 실패: {e}")
+
+    # PDF 캡처 함수의 결과 메시지를 반환
+    return result_msg
+
 
 
 def capture_pdf_document(target_file, output_dir, base_filename):

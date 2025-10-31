@@ -63,7 +63,7 @@ class AppWindow(QMainWindow):
         main_layout.addWidget(line1)
 
         # --- 2. Convert To Image ---
-        main_layout.addWidget(QLabel("<b>2. Convert To Image</b>"))
+        main_layout.addWidget(QLabel("<b>2. Convert To Image : ppt/xls/doc/pdf available</b>"))
         img_layout = QGridLayout()
         self.line_img_target = QLineEdit()
         self.btn_img_find = QPushButton("FIND")
@@ -139,7 +139,7 @@ class AppWindow(QMainWindow):
             self.line_scan_output.setText(file)
 
     def find_img_target(self):
-        filters = "PowerPoint Files (*.pptx *.ppt);;All Files (*)"
+        filters = "ppt, xls, doc, pdf (*.ppt *.pptx *.xls *.xlsx *.doc *.docx *.pdf)"
         file, _ = QFileDialog.getOpenFileName(self, "Select Target File", filter=filters)
         if file:
             self.line_img_target.setText(file)
@@ -178,15 +178,54 @@ class AppWindow(QMainWindow):
         if not target_file or not output_dir:
             self.show_error("Target File과 Output Dir를 모두 지정해야 합니다.")
             return
+        
         base_filename = os.path.splitext(os.path.basename(target_file))[0]
         ext = os.path.splitext(target_file)[1].lower()
 
-        if ext not in [".ppt", ".pptx"]:
-            self.show_error(f"현재는 PPT/PPTX 형식만 지원합니다. (입력 파일: {ext})")
+        # --- 확장자별 변환 함수 매핑 및 호출 ---
+        
+        # 지원 확장자와 함수 매핑
+        conversion_map = {
+            # PPT
+            ".ppt": core_functions.capture_ppt_slides,
+            ".pptx": core_functions.capture_ppt_slides,
+            # Excel
+            ".xls": core_functions.capture_excel_sheets,
+            ".xlsx": core_functions.capture_excel_sheets,
+            # Word
+            ".doc": core_functions.capture_word_document,
+            ".docx": core_functions.capture_word_document,
+            # PDF
+            ".pdf": core_functions.capture_pdf_document 
+        }
+
+        if ext not in conversion_map:
+            supported_exts = ", ".join(conversion_map.keys())
+            self.show_error(f"현재 지원하지 않는 파일 형식입니다. (지원 형식: {supported_exts})")
             return
+        
+        reply = QMessageBox.warning(self, "자동 캡처 시작 - 중요!",
+            "자동 캡처를 시작합니다.\n\n"
+            "**1. [포커스 유지]**\n"
+            "캡처가 완료될 때까지 **키보드나 마우스를 절대 조작하지 마세요!**\n"
+            "(다른 창을 클릭하면 캡처가 실패합니다.)\n\n"
+            "**2. [듀얼 모니터]**\n"
+            "실행되는 프로그램(PPT, Word, Excel, PDF)이\n"
+            "반드시 **'주 모니터(Main Monitor)'**에서 실행되도록 준비해주세요.\n"
+            "(보조 모니터에서 실행되면 실패할 수 있습니다.)\n\n"
+            "준비되었으면 [OK]를 누르세요.",
+            QMessageBox.Ok | QMessageBox.Cancel) # 사용자가 취소할 수 있도록
+        
+        if reply == QMessageBox.Cancel:
+            QMessageBox.information(self, "취소", "작업이 취소되었습니다.")
+            return # [신규] 사용자가 취소하면 작업 중단
+            
+        # 적절한 변환 함수를 선택
+        converter_func = conversion_map[ext]
 
         try:
-            msg = core_functions.capture_ppt_slides(target_file, output_dir, base_filename)
+            # 선택된 변환 함수 실행
+            msg = converter_func(target_file, output_dir, base_filename)
             QMessageBox.information(self, "완료", msg)
         except Exception as e:
             self.show_error(str(e))
