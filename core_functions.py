@@ -29,20 +29,37 @@ except ImportError:
 
 # --- 1. Scan Directory ---
 
-def scan_directory(target_dir, output_file):
+def scan_directory(target_dir, output_dir):
     """
-    지정된 디렉터리를 스캔하여 엑셀 파일로 저장 
+    지정된 디렉터리를 스캔하여 엑셀 파일로 저장하고,
+    Output Dir에 {Target Dir명} 폴더를 생성 후 그 하위에 동일한 구조의 빈 폴더/파일을 생성
     """
+    
+    # Target Dir의 기본 이름 (예: 'MyProject')
+    target_dir_basename = os.path.basename(os.path.normpath(target_dir))
+    
+    # 1. 엑셀 파일 경로 (Output Dir 바로 하위)
+    output_excel_file = os.path.join(output_dir, f"{target_dir_basename}.xlsx")
+    
+    # 2. 미러링 기본 경로 (Output Dir / {Target Dir명} 하위)
+    mirror_base_dir = os.path.join(output_dir, target_dir_basename)
+    
     wb = Workbook()
     ws = wb.active
     
-    sheet_name = os.path.splitext(os.path.basename(output_file))[0]
+    sheet_name = target_dir_basename
     ws.title = sheet_name
     
     base_depth = target_dir.count(os.sep)
     file_cells_coords = [] 
     
+    print(f"[DEBUG] 디렉터리 스캔 및 미러링 시작... (Target: {target_dir})")
+    print(f"[DEBUG] 엑셀 파일 저장 위치: {output_excel_file}")
+    print(f"[DEBUG] 빈 파일 미러링 위치: {mirror_base_dir}")
+
     for root, dirs, files in os.walk(target_dir, topdown=True):
+        
+        # --- 1. Excel 생성 로직 ---
         current_depth = root.count(os.sep) - base_depth
         
         folder_name = "📁 " + os.path.basename(root)
@@ -60,6 +77,28 @@ def scan_directory(target_dir, output_file):
             file_col_letter = chr(ord('A') + current_depth + 1)
             file_cells_coords.append(f"{file_col_letter}{current_row_index}")
 
+        # --- 2. 빈 폴더/파일 미러링 로직 (경로 수정) ---
+        
+        relative_path = os.path.relpath(root, target_dir)
+        
+        # 미러링 대상 디렉터리의 기준을 output_dir이 아닌 mirror_base_dir로 변경
+        if relative_path == '.':
+            dest_dir = mirror_base_dir
+        else:
+            dest_dir = os.path.join(mirror_base_dir, relative_path)
+            
+        # 대상 폴더 생성 (mirror_base_dir 포함)
+        os.makedirs(dest_dir, exist_ok=True)
+        
+        # 빈 파일 생성
+        for f_name in files:
+            dest_file_path = os.path.join(dest_dir, f_name)
+            try:
+                with open(dest_file_path, 'w') as f_empty:
+                    pass
+            except OSError as e:
+                print(f"[WARN] 빈 파일 생성 실패: {dest_file_path} (오류: {e})")
+                
     # --- 열 너비 자동 조절 ---
     column_max_lengths = {}
     for row in ws.iter_rows():
@@ -86,27 +125,24 @@ def scan_directory(target_dir, output_file):
     align_top_no_wrap = Alignment(vertical='top', wrap_text=False)
     align_top_wrap = Alignment(vertical='top', wrap_text=True)
 
-    # 빈셀은 회색으로 채워서 가독성을 높임
     gray_fill = PatternFill(start_color='BFBFBF',
                             end_color='BFBFBF',
                             fill_type='solid')
 
     for row in ws.iter_rows():
         for cell in row:
-            # 1. 기본 폰트 및 정렬 적용
             cell.font = font_9pt
             cell.alignment = align_top_no_wrap
-            
-            # 2. (신규) 값이 없는 셀(None)인 경우 회색으로 채우기
             if cell.value is None:
                 cell.fill = gray_fill
             
-    # 3. 파일 목록 셀에만 '줄바꿈 허용' 서식 덮어쓰기
     for cell_coord in file_cells_coords:
         ws[cell_coord].alignment = align_top_wrap
 
-    wb.save(output_file)
-    return f"디렉터리 스캔 완료!\n{output_file}"
+    wb.save(output_excel_file)
+    
+    # 반환 메시지 변경
+    return f"디렉터리 스캔 완료!\n\n엑셀 파일: {output_excel_file}\n빈 파일 미러링: {mirror_base_dir}"
 
 # --- 2. Convert To Image ---
 
