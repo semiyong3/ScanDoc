@@ -141,12 +141,11 @@ def scan_directory(target_dir, output_dir):
 
     wb.save(output_excel_file)
     
-    # 반환 메시지 변경
     return f"디렉터리 스캔 완료!\n\n엑셀 파일: {output_excel_file}\n빈 파일 미러링: {mirror_base_dir}"
 
 # --- 2. Convert To Image ---
 
-def capture_ppt_slides(target_file, output_dir, base_filename):
+def capture_ppt_slides(target_file, output_dir, base_filename, interval_sec):
     """
     ppt 파일을 열고 슬라이드를 한 페이지씩 이동하면서 화면을 캡처하고 파일로 저장
     """
@@ -180,7 +179,7 @@ def capture_ppt_slides(target_file, output_dir, base_filename):
             print("[DEBUG] 2. Slide-{i} 캡처 시도...") 
             slide = presentation.Slides(i)
             slide.Select()
-            time.sleep(0.5) 
+            time.sleep(interval_sec)
 
             screenshot = capture_active_window(hwnd)
             output_file_path = os.path.join(output_path, f"slide_{i:03}.png")
@@ -201,7 +200,7 @@ def capture_ppt_slides(target_file, output_dir, base_filename):
 
     return f"PPT 슬라이드 {slide_count}개를 이미지로 저장 완료!\n{output_path}"
 
-def capture_excel_sheets(target_file, output_dir, base_filename):
+def capture_excel_sheets(target_file, output_dir, base_filename, interval_sec):
 
     """
     Excel 파일을 열고 각 시트의 내용을 화면 캡처하여 파일로 저장
@@ -237,7 +236,7 @@ def capture_excel_sheets(target_file, output_dir, base_filename):
         for i in range(1, sheet_count + 1):
             sheet = workbook.Sheets(i)
             sheet.Activate()
-            time.sleep(0.5) 
+            time.sleep(interval_sec) 
             print(f"[DEBUG] 2. Sheet-{i} ('{sheet.Name}') 캡처 시도...") 
 
             # 화면 캡처
@@ -260,9 +259,9 @@ def capture_excel_sheets(target_file, output_dir, base_filename):
 
     return f"Excel 시트 {sheet_count}개를 이미지로 저장 완료!\n{output_path}"
 
-def capture_word_document(target_file, output_dir, base_filename):
+def capture_word_document(target_file, output_dir, base_filename, interval_sec):
     """
-    [수정] Word 파일을 '한 페이지' 보기로 열고,
+    Word 파일을 '한 페이지' 보기로 열고,
     'COM API(GoTo)' + '파일 해시 비교'로 모든 페이지를 캡처 (pynput 제거)
     """
     output_path = os.path.join(os.path.abspath(output_dir), base_filename + "_Word")
@@ -346,7 +345,8 @@ def capture_word_document(target_file, output_dir, base_filename):
             try:
                 # 캡처 직전 포커스 재확보
                 win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.2) 
+                time.sleep(interval_sec) 
+
                 screenshot = capture_active_window(hwnd)
                 print(f"[DEBUG] Window Handle = {hwnd}")
             except Exception as capture_err:
@@ -394,7 +394,7 @@ def capture_word_document(target_file, output_dir, base_filename):
     return f"Word 문서 {page_count}페이지 이미지를 저장 완료!\n{output_path}"
 
 
-def capture_pdf_document(target_file, output_dir, base_filename):
+def capture_pdf_document(target_file, output_dir, base_filename, interval_sec):
     """
     PDF 파일을 기본 뷰어로 열고, (포커스 + pynput)으로 PageDown을 전송하며
     '저장된 파일 해시'를 비교하여 모든 페이지를 캡처
@@ -436,6 +436,7 @@ def capture_pdf_document(target_file, output_dir, base_filename):
             
             print(f"[DEBUG] PDF Page-{i} 캡처 시도...")
             try:
+                time.sleep(interval_sec)
                 screenshot = capture_active_window(hwnd)
             except Exception as capture_err:
                 print(f"[WARN] 캡처 실패(오류: {capture_err}). 루프를 중단합니다.")
@@ -455,7 +456,7 @@ def capture_pdf_document(target_file, output_dir, base_filename):
                 # 두 파일 해시가 동일하면, PageDown이 안 먹힌 것 (문서 끝)
                 print(f"[DEBUG] Page-{i}가 이전 페이지와 파일 해시가 동일하여 캡처를 중지합니다 (문서 끝).")
                 
-                # [사용자 요청] 마지막으로 저장된 중복 파일(page_i) 삭제
+                # 마지막으로 저장된 중복 파일(page_i) 삭제
                 try:
                     os.remove(output_file_path)
                     print(f"[DEBUG] 중복 저장된 {output_file_path} 파일을 삭제했습니다.")
@@ -475,7 +476,6 @@ def capture_pdf_document(target_file, output_dir, base_filename):
             print(f"[DEBUG] PageDown 키 전송 (pynput 방식)...")
             keyboard.press(Key.page_down)
             keyboard.release(Key.page_down)
-            time.sleep(2.0) # 페이지 렌더링 대기 (넉넉하게 2초)
             
         print("[DEBUG] 캡처 완료. 뷰어 창에 WM_CLOSE 메시지 전송...")
         win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
