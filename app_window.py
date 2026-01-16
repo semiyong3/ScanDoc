@@ -7,14 +7,13 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import core_functions
-# [수정] 라이선스 관련 모듈은 main.py로 이동했으므로 여기서는 제거
 # import configparser 
 # from datetime import datetime
 
 class AppWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('ScanDoc (PPT Auto Mode)')
+        self.setWindowTitle('ScanDoc')
         self.init_ui()
         self.connect_signals()
 
@@ -36,7 +35,7 @@ class AppWindow(QMainWindow):
             QPushButton:hover { background-color: #7A7A7A; }
             QPushButton:pressed { background-color: #5A5A5A; }
         """
-        # --- 1. Scan Directory (변경 없음) ---
+        # --- 1. Scan Directory ---
         main_layout.addWidget(QLabel("<b>1. Scan Directory</b>"))
         scan_layout = QGridLayout()
         self.line_scan_target = QLineEdit()
@@ -64,14 +63,14 @@ class AppWindow(QMainWindow):
         line1.setFrameShape(QFrame.HLine)
         main_layout.addWidget(line1)
 
-        # --- 2. Convert To Image [수정] ---
+        # --- 2. Convert To Image  ---
         title_layout2 = QHBoxLayout()
-        title_layout2.addWidget(QLabel("<b>2. Convert To Image (ppt/xls/doc/pdf) </b>"))
+        title_layout2.addWidget(QLabel("<b>2. Convert (ppt/xls/doc/pdf) To Image (Batch)  </b>"))
         title_layout2.addStretch()
         title_layout2.addWidget(QLabel("Interval (s):"))
         
-        # [수정] 기본값을 "1.0"으로 변경
-        self.line_img_interval = QLineEdit("3.0") 
+        # 기본값을 "1.0"으로 변경
+        self.line_img_interval = QLineEdit("1.0") 
         self.line_img_interval.setFixedWidth(40)  
         title_layout2.addWidget(self.line_img_interval)
         main_layout.addLayout(title_layout2) 
@@ -89,7 +88,7 @@ class AppWindow(QMainWindow):
         run_layout2.addWidget(self.btn_img_run)
         run_layout2.addStretch()
 
-        img_layout.addWidget(QLabel("- Target File :"), 0, 0)
+        img_layout.addWidget(QLabel("- Target Dir :"), 0, 0)
         img_layout.addWidget(self.line_img_target, 0, 1)
         img_layout.addWidget(self.btn_img_find, 0, 2)
         img_layout.addWidget(QLabel("- Output Dir :"), 1, 0)
@@ -97,7 +96,6 @@ class AppWindow(QMainWindow):
         img_layout.addWidget(self.btn_img_set, 1, 2)
         img_layout.addLayout(run_layout2, 2, 0, 1, 3)
         main_layout.addLayout(img_layout)
-        # --- [수정 끝] ---
 
         line2 = QFrame()
         line2.setFrameShape(QFrame.HLine)
@@ -153,10 +151,13 @@ class AppWindow(QMainWindow):
             self.line_scan_output.setText(dir)
 
     def find_img_target(self):
-        filters = "ppt, xls, doc, pdf (*.ppt *.pptx *.xls *.xlsx *.doc *.docx *.pdf)"
-        file, _ = QFileDialog.getOpenFileName(self, "Select Target File", filter=filters)
-        if file:
-            self.line_img_target.setText(file)
+        # filters = "ppt, xls, doc, pdf (*.ppt *.pptx *.xls *.xlsx *.doc *.docx *.pdf)"
+        # file, _ = QFileDialog.getOpenFileName(self, "Select Target File", filter=filters)
+        # if file:
+        #     self.line_img_target.setText(file)
+        dir = QFileDialog.getExistingDirectory(self, "Select Target Directory (containing docs)")
+        if dir:
+            self.line_img_target.setText(dir)
 
     def set_img_output(self):
         dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
@@ -186,69 +187,46 @@ class AppWindow(QMainWindow):
         except Exception as e:
             self.show_error(str(e))
 
-    # [수정] run_convert_to_image 함수 수정
     def run_convert_to_image(self):
-        target_file = self.line_img_target.text()
+        target_dir = self.line_img_target.text()
         output_dir = self.line_img_output.text()
-        if not target_file or not output_dir:
-            self.show_error("Target File과 Output Dir를 모두 지정해야 합니다.")
+        
+        if not target_dir or not output_dir:
+            self.show_error("Target Dir과 Output Dir를 모두 지정해야 합니다.")
             return
         
-        # [수정] Interval 값(초)을 읽어오고 최소 1.0초 보장
+        # Interval 값 체크
         try:
             interval_sec = float(self.line_img_interval.text())
-            if interval_sec < 1.0: # [수정] 최소 1.0초 강제
+            if interval_sec < 1.0:
                 interval_sec = 1.0 
                 self.line_img_interval.setText("1.0")
         except ValueError:
             self.show_error("Interval 값은 숫자(예: 1.0)여야 합니다.")
             return
-        
-        base_filename = os.path.splitext(os.path.basename(target_file))[0]
-        ext = os.path.splitext(target_file)[1].lower()
 
-        # --- 확장자별 변환 함수 매핑 및 호출 ---
-        conversion_map = {
-            ".ppt": core_functions.capture_ppt_slides,
-            ".pptx": core_functions.capture_ppt_slides,
-            ".xls": core_functions.capture_excel_sheets,
-            ".xlsx": core_functions.capture_excel_sheets,
-            ".doc": core_functions.capture_word_document,
-            ".docx": core_functions.capture_word_document,
-            ".pdf": core_functions.capture_pdf_document 
-        }
-
-        if ext not in conversion_map:
-            supported_exts = ", ".join(conversion_map.keys())
-            self.show_error(f"현재 지원하지 않는 파일 형식입니다. (지원 형식: {supported_exts})")
-            return
-        
-        reply = QMessageBox.warning(self, "자동 캡처 시작 - 중요!",
-            "자동 캡처를 시작합니다.\n\n"
-            "**1. [포커스 유지]**\n"
-            "캡처가 완료될 때까지 **키보드나 마우스를 절대 조작하지 마세요!**\n"
-            "(다른 창을 클릭하면 캡처가 실패합니다.)\n\n"
-            "**2. [듀얼 모니터]**\n"
-            "실행되는 프로그램(PPT, Word, Excel, PDF)이\n"
-            "반드시 **'주 모니터(Main Monitor)'**에서 실행되도록 준비해주세요.\n"
-            "(보조 모니터에서 실행되면 실패할 수 있습니다.)\n\n"
-            f"**3. [페이지 간격]**\n"
-            f"페이지(슬라이드)당 {interval_sec}초 대기합니다.\n\n"
-            "준비되었으면 [OK]를 누르세요.",
+        # 일괄 작업 경고 메시지
+        reply = QMessageBox.warning(self, "일괄 변환 시작",
+            "지정된 폴더 내의 **모든 문서 파일**을 변환합니다.\n\n"
+            "**[주의사항]**\n"
+            "1. 작업 중 **마우스/키보드 사용 금지** (창 포커스 유지 필요)\n"
+            "2. Office/PDF 프로그램이 **주 모니터**에서 실행되어야 함\n"
+            "3. 파일 개수에 따라 시간이 오래 걸릴 수 있음\n\n"
+            "진행하시겠습니까?",
             QMessageBox.Ok | QMessageBox.Cancel)
         
         if reply == QMessageBox.Cancel:
-            QMessageBox.information(self, "취소", "작업이 취소되었습니다.")
             return
-            
-        converter_func = conversion_map[ext]
 
         try:
-            # [수정] converter_func에 interval_sec 인자 전달
-            msg = converter_func(target_file, output_dir, base_filename, interval_sec)
-            QMessageBox.information(self, "완료", msg)
+            # [변경] 폴더 일괄 처리 함수 호출
+            msg = core_functions.process_directory_for_images(target_dir, output_dir, interval_sec)
+            
+            # 결과 메시지 표시
+            QMessageBox.information(self, "작업 결과", msg)
+            
         except Exception as e:
-            self.show_error(str(e))
+            self.show_error(f"작업 실행 중 오류 발생: {str(e)}")
 
     def run_convert_to_pdf(self):
         target_dir = self.line_pdf_target.text()

@@ -489,7 +489,93 @@ def capture_pdf_document(target_file, output_dir, base_filename, interval_sec):
     
     return f"PDF 문서 {page_count}페이지 이미지를 저장 완료!\n{output_path}"
 
+def process_directory_for_images(target_dir, output_dir, interval_sec):
+    """
+    [업그레이드 기능]
+    Target Dir 내의 모든 지원 파일을 검색하여 순차적으로 이미지 변환 함수를 호출합니다.
+    """
+    target_dir = os.path.abspath(target_dir)
+    output_dir = os.path.abspath(output_dir)
 
+    if not os.path.exists(target_dir):
+        raise FileNotFoundError(f"대상 폴더를 찾을 수 없습니다: {target_dir}")
+
+    # 지원하는 확장자와 매핑되는 함수 정의
+    conversion_map = {
+        ".ppt": capture_ppt_slides,
+        ".pptx": capture_ppt_slides,
+        ".xls": capture_excel_sheets,
+        ".xlsx": capture_excel_sheets,
+        ".doc": capture_word_document,
+        ".docx": capture_word_document,
+        ".pdf": capture_pdf_document 
+    }
+    
+    # 디렉터리 내 파일 검색
+    all_files = os.listdir(target_dir)
+    target_files = []
+    
+    for f in all_files:
+        full_path = os.path.join(target_dir, f)
+        if os.path.isfile(full_path):
+            ext = os.path.splitext(f)[1].lower()
+            if ext in conversion_map:
+                target_files.append((full_path, ext))
+    
+    # 파일명 순으로 정렬 (옵션)
+    target_files.sort()
+
+    if not target_files:
+        return f"지정된 폴더에 변환 가능한 파일이 없습니다.\n(대상: {target_dir})\n지원 확장자: ppt, xls, doc, pdf"
+
+    success_count = 0
+    fail_count = 0
+    results_log = []
+
+    print(f"\n[DEBUG] --- 배치 작업 시작 ---")
+    print(f"[DEBUG] 총 {len(target_files)}개 변환 대상 파일 발견.")
+
+    for i, (file_path, ext) in enumerate(target_files, 1):
+        filename = os.path.basename(file_path)
+        base_filename = os.path.splitext(filename)[0]
+        
+        print(f"\n>> [{i}/{len(target_files)}] 처리 중: {filename}")
+        
+        converter_func = conversion_map[ext]
+        
+        try:
+            # 개별 변환 함수 호출
+            # (각 함수는 output_dir 아래에 base_filename 폴더를 알아서 생성함)
+            converter_func(file_path, output_dir, base_filename, interval_sec)
+            
+            success_count += 1
+            results_log.append(f"[성공] {filename}")
+            print(f">> [{i}/{len(target_files)}] 완료: {filename}")
+            
+        except Exception as e:
+            fail_count += 1
+            err_msg = f"[실패] {filename} : {str(e)}"
+            print(err_msg)
+            results_log.append(err_msg)
+            
+            # 오류 발생 시 잠시 대기 후 다음 파일 진행 (연속 오류 방지)
+            time.sleep(2.0)
+
+    # 최종 결과 리포트 생성
+    summary = (
+        f"작업이 완료되었습니다.\n\n"
+        f"- 총 파일: {len(target_files)}개\n"
+        f"- 성공: {success_count}개\n"
+        f"- 실패: {fail_count}개\n\n"
+        f"저장 경로: {output_dir}"
+    )
+    
+    # 실패한 파일이 있다면 로그에 추가
+    if fail_count > 0:
+        summary += "\n\n[실패 목록]\n" + "\n".join([log for log in results_log if "[실패]" in log])
+        
+    return summary
+    
 # --- 3. Convert To PDF (변경 없음) ---
 
 def _numeric_sort_key(f):

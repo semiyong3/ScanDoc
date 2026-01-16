@@ -6,7 +6,7 @@ from app_window import AppWindow
 
 # 1. 만료일을 지정 (YYYY-MM-DD)
 # 2. 만료일 체크를 안 하려면 이 값을 None 으로 설정 (예: EXPIRE_DATE = None)
-EXPIRE_DATE = "2025-12-31" 
+EXPIRE_DATE = "2026-06-30" 
 # ---
 
 # --- 헬퍼 함수 (변경 없음) ---
