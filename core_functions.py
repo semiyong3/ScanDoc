@@ -16,7 +16,7 @@ from PIL import Image, ImageGrab, ImageChops
 from pynput.keyboard import Key, Controller 
 from win32com.client import Dispatch, GetActiveObject
 import hashlib
-from common import _get_file_hash, capture_active_window
+from common import _get_file_hash, capture_active_window, _clear_system_clipboard
 
 
 try:
@@ -32,43 +32,35 @@ except ImportError:
 def scan_directory(target_dir, output_dir):
     """
     지정된 디렉터리를 스캔하여 엑셀 파일로 저장하고,
-    Output Dir에 {Target Dir명} 폴더를 생성 후 그 하위에 동일한 구조의 빈 폴더/파일을 생성
+    Output Dir에 동일한 구조의 빈 폴더/파일을 생성
     """
     
-    # Target Dir의 기본 이름 (예: 'MyProject')
     target_dir_basename = os.path.basename(os.path.normpath(target_dir))
-    
-    # 1. 엑셀 파일 경로 (Output Dir 바로 하위)
     output_excel_file = os.path.join(output_dir, f"{target_dir_basename}.xlsx")
     
-    # 2. 미러링 기본 경로 (Output Dir / {Target Dir명} 하위)
+    # 미러링 기본 경로 (Output Dir 하위에 원본 폴더명으로 생성)
+    # 예: Output/TargetDirName/
     mirror_base_dir = os.path.join(output_dir, target_dir_basename)
     
     wb = Workbook()
     ws = wb.active
-    
-    sheet_name = target_dir_basename
-    ws.title = sheet_name
+    ws.title = target_dir_basename
     
     base_depth = target_dir.count(os.sep)
     file_cells_coords = [] 
     
-    print(f"[DEBUG] 디렉터리 스캔 및 미러링 시작... (Target: {target_dir})")
-    print(f"[DEBUG] 엑셀 파일 저장 위치: {output_excel_file}")
-    print(f"[DEBUG] 빈 파일 미러링 위치: {mirror_base_dir}")
+    print(f"[DEBUG] 스캔 시작: {target_dir} -> {output_dir}")
 
     for root, dirs, files in os.walk(target_dir, topdown=True):
         
-        # --- 1. Excel 생성 로직 ---
+        # --- 1. Excel 생성 로직  ---
         current_depth = root.count(os.sep) - base_depth
-        
         folder_name = "📁 " + os.path.basename(root)
         row = [None] * current_depth + [folder_name]
         
         if files:
             files_str = "\n".join(["┣ " + f for f in files])
             row.append(files_str)
-            
         ws.append(row)
         
         if files:
@@ -77,28 +69,23 @@ def scan_directory(target_dir, output_dir):
             file_col_letter = chr(ord('A') + current_depth + 1)
             file_cells_coords.append(f"{file_col_letter}{current_row_index}")
 
-        # --- 2. 빈 폴더/파일 미러링 로직 (경로 수정) ---
-        
         relative_path = os.path.relpath(root, target_dir)
         
-        # 미러링 대상 디렉터리의 기준을 output_dir이 아닌 mirror_base_dir로 변경
         if relative_path == '.':
             dest_dir = mirror_base_dir
         else:
             dest_dir = os.path.join(mirror_base_dir, relative_path)
             
-        # 대상 폴더 생성 (mirror_base_dir 포함)
         os.makedirs(dest_dir, exist_ok=True)
         
-        # 빈 파일 생성
         for f_name in files:
             dest_file_path = os.path.join(dest_dir, f_name)
             try:
                 with open(dest_file_path, 'w') as f_empty:
                     pass
             except OSError as e:
-                print(f"[WARN] 빈 파일 생성 실패: {dest_file_path} (오류: {e})")
-                
+                print(f"[WARN] 빈 파일 생성 실패: {dest_file_path}")
+
     # --- 열 너비 자동 조절 ---
     column_max_lengths = {}
     for row in ws.iter_rows():
@@ -120,7 +107,6 @@ def scan_directory(target_dir, output_dir):
         ws.column_dimensions[col_letter].width = max_length + 2
 
     # --- 전체 셀 서식 적용 ---
-    
     font_9pt = Font(size=9)
     align_top_no_wrap = Alignment(vertical='top', wrap_text=False)
     align_top_wrap = Alignment(vertical='top', wrap_text=True)
@@ -491,8 +477,7 @@ def capture_pdf_document(target_file, output_dir, base_filename, interval_sec):
 
 def process_directory_for_images(target_dir, output_dir, interval_sec):
     """
-    [업그레이드 기능]
-    Target Dir 내의 모든 지원 파일을 검색하여 순차적으로 이미지 변환 함수를 호출합니다.
+    Target Dir 내의 모든 지원 파일을 검색하여 이미지 변환
     """
     target_dir = os.path.abspath(target_dir)
     output_dir = os.path.abspath(output_dir)
@@ -576,7 +561,7 @@ def process_directory_for_images(target_dir, output_dir, interval_sec):
         
     return summary
     
-# --- 3. Convert To PDF (변경 없음) ---
+# --- 3. Convert To PDF ---
 
 def _numeric_sort_key(f):
     basename = os.path.splitext(os.path.basename(f))[0]
@@ -588,52 +573,378 @@ def _numeric_sort_key(f):
         return basename
 
 
-def convert_to_pdf(target_dir, output_file):
+def convert_to_pdf(target_root_dir, output_root_dir):
     """
-    지정된 디렉터리 내의 이미지 파일들을 모아 하나의 PDF 파일로 변환
-    (이전 버전의 ZIP 파일 처리 로직 제거됨)
+    Target Root Dir 하위에 있는 '각 폴더'를 하나의 PDF로 변환
     """
-    
-    # 1. 이미지 파일 확장자 정의
+
+    target_root_dir = os.path.abspath(target_root_dir)
+    output_root_dir = os.path.abspath(output_root_dir)
     img_extensions = ('.png', '.jpg', '.jpeg', '.bmp', '.gif')
-    
-    # 2. 지정된 디렉터리에서 이미지 파일 목록을 가져옵니다.
-    # glob.glob을 사용하여 모든 파일을 검색하고, 확장자를 확인하여 필터링합니다.
-    target_dir = os.path.abspath(target_dir)
-    output_file = os.path.abspath(output_file)
 
-    image_files = [f for f in glob.glob(os.path.join(target_dir, "*")) 
-                   if os.path.splitext(f)[1].lower() in img_extensions]
-                   
-    if not image_files:
-        raise Exception(f"'{target_dir}' 디렉터리 내에 변환할 수 있는 이미지 파일이 없습니다. (지원 확장자: {img_extensions})")
+    # 하위 디렉터리 탐색
+    sub_dirs = [
+        d for d in os.listdir(target_root_dir) 
+        if os.path.isdir(os.path.join(target_root_dir, d))
+    ]
+    
+    if not sub_dirs:
+        return f"지정된 Target Dir 내에 처리할 하위 폴더가 없습니다.\n({target_root_dir})"
+
+    print(f"[DEBUG] PDF 변환 배치 시작. 대상 폴더: {len(sub_dirs)}개")
+    
+    success_count = 0
+    fail_count = 0
+    results_log = []
+
+    for folder_name in sub_dirs:
+        current_img_dir = os.path.join(target_root_dir, folder_name)
         
-    # 3. 파일 목록을 순서대로 정렬 (slide_001.png, slide_002.png 순서 보장)
-    image_files.sort(key=_numeric_sort_key)
-    
-    # 4. Pillow Image 객체로 로드 (PDF 변환을 위해 RGB로 변환)
-    # PIL.Image.open() 시 파일이 잠기는 것을 방지하기 위해 .convert('RGB')까지 처리
-    try:
-        images_pil = [Image.open(f).convert('RGB') for f in image_files]
-    except Exception as e:
-        raise RuntimeError(f"이미지 파일을 로드하는 중 오류 발생: {e}")
+        # [수정] PDF 파일명은 폴더명과 동일하게 설정
+        pdf_filename = f"{folder_name}.pdf"
+        output_pdf_path = os.path.join(output_root_dir, pdf_filename)
 
+        print(f"\n>> 처리 중: {folder_name} -> {pdf_filename}")
+
+        try:
+            # 1. 해당 폴더 내 이미지 파일 검색
+            image_files = [
+                os.path.join(current_img_dir, f) 
+                for f in os.listdir(current_img_dir) 
+                if os.path.splitext(f)[1].lower() in img_extensions
+            ]
+
+            if not image_files:
+                print(f"[SKIP] '{folder_name}' 폴더에 이미지가 없어 건너뜁니다.")
+                results_log.append(f"[SKIP] {folder_name} (이미지 없음)")
+                continue
+
+            # 2. 정렬
+            image_files.sort(key=_numeric_sort_key)
+
+            # 3. Pillow 이미지 로드 및 PDF 변환
+            images_pil = []
+            for img_path in image_files:
+                try:
+                    img = Image.open(img_path).convert('RGB')
+                    images_pil.append(img)
+                except Exception as img_err:
+                    print(f"[WARN] 이미지 로드 실패 ({img_path}): {img_err}")
+
+            if not images_pil:
+                print(f"[SKIP] '{folder_name}' 폴더에서 유효한 이미지를 로드하지 못했습니다.")
+                continue
+            
+            # 4. PDF 저장
+            images_pil[0].save(
+                output_pdf_path,
+                save_all=True,
+                append_images=images_pil[1:]
+            )
+            
+            success_count += 1
+            print(f"[OK] 저장 완료: {output_pdf_path}")
+            results_log.append(f"[성공] {folder_name}.pdf")
+
+        except Exception as e:
+            fail_count += 1
+            err_msg = f"[실패] {folder_name} : {str(e)}"
+            print(err_msg)
+            results_log.append(err_msg)
+
+    # 최종 결과 리포트
+    summary = (
+        f"PDF 일괄 변환 완료!\n\n"
+        f"- 총 폴더 스캔: {len(sub_dirs)}개\n"
+        f"- 생성 성공: {success_count}개\n"
+        f"- 실패: {fail_count}개\n\n"
+        f"저장 경로: {output_root_dir}"
+    )
+
+    if fail_count > 0:
+        summary += "\n\n[처리 로그]\n" + "\n".join(results_log)
+        
+    return summary
+
+# --- 4. Remove DRM (Content Copy & Save) ---
+
+def remove_drm_ppt(target_file, output_path):
+    """PPT 파일을 열어 슬라이드를 모두 복사한 뒤, 새 파일에 붙여넣어 저장"""
+    powerpoint = None
+    source_pres = None
+    new_pres = None
     
-    # 5. PDF 파일 저장 경로 설정 (output_file은 app_window.py에서 이미 전체 경로를 받음)
-    pdf_path = output_file
+    try:
+        powerpoint = Dispatch("PowerPoint.Application")
+        powerpoint.Visible = True
+        powerpoint.DisplayAlerts = 0  # 경고창 억제
+        
+        source_pres = powerpoint.Presentations.Open(os.path.abspath(target_file))
+        new_pres = powerpoint.Presentations.Add()
+        
+        # 슬라이드 복사
+        if source_pres.Slides.Count > 0:
+            source_pres.Slides.Range().Copy()
+            time.sleep(1.0)
+            new_pres.Slides.Paste()
+        
+        # 저장 전 원본 먼저 닫기 (충돌 방지)
+        source_pres.Close()
+        source_pres = None 
+        
+        new_pres.SaveAs(os.path.abspath(output_path))
+        print(f"[OK] PPT 저장 완료: {output_path}")
+        
+    except Exception as e:
+        raise RuntimeError(f"PPT 처리 실패: {e}")
+    finally:
+        # 클립보드 비우기
+        _clear_system_clipboard()
+
+        # 명시적 자원 해제 및 종료
+        if source_pres: 
+            try: source_pres.Close()
+            except: pass
+        if new_pres: 
+            try: new_pres.Close()
+            except: pass
+        if powerpoint: 
+            try: powerpoint.Quit()
+            except: pass
+
+def remove_drm_excel(target_file, output_path):
+    """Excel 파일을 열어 시트를 새 통합 문서로 복사하여 저장"""
+    excel = None
+    source_wb = None
+    new_wb = None
     
-    # 6. 첫 번째 이미지를 기준으로 PDF를 생성하고 나머지 이미지들을 추가합니다.
-    if images_pil:
+    try:
+        excel = Dispatch("Excel.Application")
+        excel.Visible = True
+        excel.DisplayAlerts = False 
+        
+        source_wb = excel.Workbooks.Open(os.path.abspath(target_file))
+        
+        # 시트 전체 복사 (인자 없이 Copy하면 새 워크북 생성됨)
+        source_wb.Sheets.Copy()
+        new_wb = excel.ActiveWorkbook
+        
+        # [수정 핵심] 저장하기 전에 원본 파일을 먼저 닫아야 "같은 이름으로 열려있음" 에러 방지
+        source_wb.Close(False)
+        source_wb = None 
+        
+        # 새 파일 저장
+        new_wb.SaveAs(os.path.abspath(output_path))
+        print(f"[OK] Excel 저장 완료: {output_path}")
+        
+    except Exception as e:
+        raise RuntimeError(f"Excel 처리 실패: {e}")
+    finally:
+        # 클립보드 비우기
+        _clear_system_clipboard()
+
+        # 명시적 자원 해제 및 종료
+        if source_wb: 
+            try: source_wb.Close(False)
+            except: pass
+        if new_wb: 
+            try: new_wb.Close(False)
+            except: pass
+        if excel: 
+            excel.DisplayAlerts = True
+            try: excel.Quit()
+            except: pass
+
+def remove_drm_word(target_file, output_path):
+    """Word 파일을 열어 전체 내용을 복사하여 새 문서에 붙여넣고 저장"""
+    word = None
+    source_doc = None
+    new_doc = None
+    
+    try:
+        word = Dispatch("Word.Application")
+        word.Visible = True
+        
+        source_doc = word.Documents.Open(os.path.abspath(target_file))
+        
+        word.Selection.WholeStory()
+        word.Selection.Copy()
+        time.sleep(0.5)
+        
+        new_doc = word.Documents.Add()
+        new_doc.Range().Paste()
+        
+        # 저장 전 원본 닫기
+        source_doc.Close(False)
+        source_doc = None
+        
+        new_doc.SaveAs(os.path.abspath(output_path), FileFormat=16) # Default docx
+        print(f"[OK] Word 저장 완료: {output_path}")
+        
+    except Exception as e:
+        raise RuntimeError(f"Word 처리 실패: {e}")
+    finally:
+        # 클립보드 비우기
+        _clear_system_clipboard()
+
+        if source_doc: 
+            try: source_doc.Close(False)
+            except: pass
+        if new_doc: 
+            try: new_doc.Close(False)
+            except: pass
+        if word: 
+            try: word.Quit()
+            except: pass
+
+def remove_drm_pdf_via_image(target_file, output_path):
+    """
+    PDF -> 이미지 캡처(기능2) -> PDF 병합(기능3) 방식을 사용하여 재생성
+    """
+    
+    # 1. 임시 폴더 생성 (Output 폴더 내부에 hidden temp folder 생성)
+    base_dir = os.path.dirname(output_path)
+    filename = os.path.basename(output_path)
+    filename_no_ext = os.path.splitext(filename)[0]
+    
+    # 임시 이미지 저장 경로: OutputDir/_temp_filename/
+    temp_img_dir = os.path.join(base_dir, f"_temp_{filename_no_ext}")
+    if os.path.exists(temp_img_dir):
+        shutil.rmtree(temp_img_dir)
+    os.makedirs(temp_img_dir)
+
+    try:
+        # 2. 이미지 캡처 (기존 capture_pdf_document 함수 재사용)
+        # capture_pdf_document는 내부적으로 폴더를 하나 더 생성하므로 경로 조정 필요
+        # capture_pdf_document(file, output_root, base_name, interval)
+        print(f"[DEBUG] PDF 이미지 캡처 시작: {target_file}")
+        
+        # 캡처 속도(interval)는 0.5초로 설정 (필요 시 조정)
+        capture_pdf_document(target_file, temp_img_dir, "capture", 0.5)
+        
+        # capture_pdf_document는 'temp_img_dir/capture_PDF' 폴더에 이미지를 저장함
+        actual_img_dir = os.path.join(temp_img_dir, "capture_PDF")
+        
+        if not os.path.exists(actual_img_dir):
+             raise RuntimeError("PDF 캡처 실패: 이미지 폴더가 생성되지 않았습니다.")
+
+        # 3. 이미지들을 하나로 묶어 PDF 생성 (기존 convert_to_pdf 로직의 축소판)
+        img_files = [
+            os.path.join(actual_img_dir, f) 
+            for f in os.listdir(actual_img_dir) 
+            if f.lower().endswith('.png')
+        ]
+        
+        if not img_files:
+            raise RuntimeError("캡처된 이미지가 없습니다.")
+
+        # 정렬 (page_001, page_002 ...)
+        img_files.sort() 
+
+        images_pil = []
+        for img_p in img_files:
+            try:
+                img = Image.open(img_p).convert('RGB')
+                images_pil.append(img)
+            except Exception as e:
+                print(f"[WARN] 이미지 로드 실패: {e}")
+
+        if not images_pil:
+            raise RuntimeError("변환할 유효한 이미지가 없습니다.")
+
+        # 4. 최종 PDF 저장
         images_pil[0].save(
-            pdf_path,
+            output_path,
             save_all=True,
             append_images=images_pil[1:]
         )
-    else:
-        # 이 else 블록은 2단계에서 이미 처리되었으나, 안전을 위해 남겨둡니다.
-        raise Exception("변환할 이미지가 준비되지 않았습니다.")
+        print(f"[OK] PDF 재생성 완료: {output_path}")
+
+    except Exception as e:
+        raise RuntimeError(f"PDF 이미지 변환 방식 실패: {e}")
+        
+    finally:
+        # 5. 임시 폴더 삭제 (정리)
+        if os.path.exists(temp_img_dir):
+            try:
+                shutil.rmtree(temp_img_dir)
+                print(f"[DEBUG] 임시 폴더 삭제 완료: {temp_img_dir}")
+            except Exception as e:
+                print(f"[WARN] 임시 폴더 삭제 실패: {e}")
+
+
+def process_remove_drm(target_dir, output_dir):
+    """
+    Target Dir 내의 파일을 읽어 DRM 제거 후 Output Dir에 '_해제' 접미사를 붙여 저장
+    """
+    target_dir = os.path.abspath(target_dir)
+    output_dir = os.path.abspath(output_dir)
+
+    drm_map = {
+        ".ppt": remove_drm_ppt,
+        ".pptx": remove_drm_ppt,
+        ".xls": remove_drm_excel,
+        ".xlsx": remove_drm_excel,
+        ".doc": remove_drm_word,
+        ".docx": remove_drm_word,
+        ".pdf": remove_drm_pdf_via_image  
+    }
     
+    all_files = os.listdir(target_dir)
+    target_files = []
     
-    # 이전 버전에서 사용되던 shutil, tempfile 관련 로직은 제거되었습니다.
+    for f in all_files:
+        full_path = os.path.join(target_dir, f)
+        if os.path.isfile(full_path):
+            ext = os.path.splitext(f)[1].lower()
+            if ext in drm_map:
+                target_files.append((full_path, ext))
+                
+    if not target_files:
+        return f"변환할 파일이 없습니다.\n({target_dir})"
+
+    success_count = 0
+    fail_count = 0
+    results_log = []
     
-    return f"PDF 변환 완료!\n총 {len(image_files)}개의 이미지를 {pdf_path}로 병합했습니다."
+    print(f"[DEBUG] DRM 제거 배치 시작. 총 {len(target_files)}개")
+
+    for i, (file_path, ext) in enumerate(target_files, 1):
+        filename = os.path.basename(file_path)
+        print(f"\n>> [{i}/{len(target_files)}] DRM 처리 중: {filename}")
+        
+        # 파일명 분리 및 '_해제' 접미사 추가
+        base_name, file_ext = os.path.splitext(filename)
+        new_filename = f"{base_name}_해제{file_ext}"
+        
+        output_file_path = os.path.join(output_dir, new_filename)        
+        # 구버전 확장자(doc, xls, ppt)는 신규 포맷(x)으로 저장하는 것이 안정적임 (선택사항)
+        if ext == '.ppt': output_file_path += 'x'
+        elif ext == '.doc': output_file_path += 'x'
+        elif ext == '.xls': output_file_path += 'x'
+
+        func = drm_map[ext]
+        
+        try:
+            func(file_path, output_file_path)
+            success_count += 1
+            results_log.append(f"[성공] {filename}")
+        except Exception as e:
+            fail_count += 1
+            err_msg = f"[실패] {filename} : {str(e)}"
+            print(err_msg)
+            results_log.append(err_msg)
+            time.sleep(1.0)
+
+    summary = (
+        f"DRM 제거(재저장) 작업 완료!\n\n"
+        f"- 총 파일: {len(target_files)}개\n"
+        f"- 성공: {success_count}개\n"
+        f"- 실패: {fail_count}개\n\n"
+        f"저장 경로: {output_dir}"
+    )
+    
+    if fail_count > 0:
+        summary += "\n\n[실패 목록]\n" + "\n".join([log for log in results_log if "[실패]" in log])
+        
+    return summary

@@ -51,11 +51,8 @@ if __name__ == "__main__":
                                  "YYYY-MM-DD 또는 None 으로 설정하세요.")
     
     except Exception as e:
-        # 기타 예기치 못한 오류
         show_startup_error(f"라이선스 확인 중 알 수 없는 오류 발생: {e}")
-    # --- [수정 끝] ---
 
-    # --- 라이선스 체크 통과 ---
     win = AppWindow()
     win.show()
     sys.exit(app.exec_())

@@ -7,8 +7,6 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt
 import core_functions
-# import configparser 
-# from datetime import datetime
 
 class AppWindow(QMainWindow):
     def __init__(self):
@@ -40,8 +38,6 @@ class AppWindow(QMainWindow):
         scan_layout = QGridLayout()
         self.line_scan_target = QLineEdit()
         self.btn_scan_find = QPushButton("FIND")
-        self.line_scan_output = QLineEdit()
-        self.btn_scan_set = QPushButton("SET")
 
         self.btn_scan_run = QPushButton("RUN")
         self.btn_scan_run.setStyleSheet(run_button_style)
@@ -53,10 +49,7 @@ class AppWindow(QMainWindow):
         scan_layout.addWidget(QLabel("- Target Dir :"), 0, 0)
         scan_layout.addWidget(self.line_scan_target, 0, 1)
         scan_layout.addWidget(self.btn_scan_find, 0, 2)
-        scan_layout.addWidget(QLabel("- Output Dir :"), 1, 0)
-        scan_layout.addWidget(self.line_scan_output, 1, 1)
-        scan_layout.addWidget(self.btn_scan_set, 1, 2)
-        scan_layout.addLayout(run_layout1, 2, 0, 1, 3)
+        scan_layout.addLayout(run_layout1, 1, 0, 1, 3)
         main_layout.addLayout(scan_layout)
 
         line1 = QFrame()
@@ -65,11 +58,10 @@ class AppWindow(QMainWindow):
 
         # --- 2. Convert To Image  ---
         title_layout2 = QHBoxLayout()
-        title_layout2.addWidget(QLabel("<b>2. Convert (ppt/xls/doc/pdf) To Image (Batch)  </b>"))
+        title_layout2.addWidget(QLabel("<b>2. Convert Docs To Images (Batch)  </b>"))
         title_layout2.addStretch()
         title_layout2.addWidget(QLabel("Interval (s):"))
         
-        # 기본값을 "1.0"으로 변경
         self.line_img_interval = QLineEdit("1.0") 
         self.line_img_interval.setFixedWidth(40)  
         title_layout2.addWidget(self.line_img_interval)
@@ -78,8 +70,6 @@ class AppWindow(QMainWindow):
         img_layout = QGridLayout()
         self.line_img_target = QLineEdit()
         self.btn_img_find = QPushButton("FIND")
-        self.line_img_output = QLineEdit()
-        self.btn_img_set = QPushButton("SET")
 
         self.btn_img_run = QPushButton("RUN")
         self.btn_img_run.setStyleSheet(run_button_style)
@@ -91,23 +81,18 @@ class AppWindow(QMainWindow):
         img_layout.addWidget(QLabel("- Target Dir :"), 0, 0)
         img_layout.addWidget(self.line_img_target, 0, 1)
         img_layout.addWidget(self.btn_img_find, 0, 2)
-        img_layout.addWidget(QLabel("- Output Dir :"), 1, 0)
-        img_layout.addWidget(self.line_img_output, 1, 1)
-        img_layout.addWidget(self.btn_img_set, 1, 2)
-        img_layout.addLayout(run_layout2, 2, 0, 1, 3)
+        img_layout.addLayout(run_layout2, 1, 0, 1, 3)
         main_layout.addLayout(img_layout)
 
         line2 = QFrame()
         line2.setFrameShape(QFrame.HLine)
         main_layout.addWidget(line2)
 
-        # --- 3. Convert To PDF (변경 없음) ---
-        main_layout.addWidget(QLabel("<b>3. Convert To PDF</b>"))
+        # --- 3. Convert To PDF ---
+        main_layout.addWidget(QLabel("<b>3. Convert Images To PDFs (Batch)</b>"))
         pdf_layout = QGridLayout()
         self.line_pdf_target = QLineEdit()
         self.btn_pdf_find = QPushButton("FIND")
-        self.line_pdf_output = QLineEdit()
-        self.btn_pdf_set = QPushButton("SET")
 
         self.btn_pdf_run = QPushButton("RUN")
         self.btn_pdf_run.setStyleSheet(run_button_style)
@@ -119,36 +104,52 @@ class AppWindow(QMainWindow):
         pdf_layout.addWidget(QLabel("- Target Dir :"), 0, 0)
         pdf_layout.addWidget(self.line_pdf_target, 0, 1)
         pdf_layout.addWidget(self.btn_pdf_find, 0, 2)
-        pdf_layout.addWidget(QLabel("- Output File :"), 1, 0)
-        pdf_layout.addWidget(self.line_pdf_output, 1, 1)
-        pdf_layout.addWidget(self.btn_pdf_set, 1, 2)
-        pdf_layout.addLayout(run_layout3, 2, 0, 1, 3)
+
+        pdf_layout.addLayout(run_layout3, 1, 0, 1, 3)
         main_layout.addLayout(pdf_layout)
+        
+        line3 = QFrame() # [추가] 구분선
+        line3.setFrameShape(QFrame.HLine)
+        main_layout.addWidget(line3)
+
+        # --- 4. Remove DRM (Batch) ---
+        main_layout.addWidget(QLabel("<b>4. Remove DRM (Batch)</b>"))
+        drm_layout = QGridLayout()
+        self.line_drm_target = QLineEdit()
+        self.btn_drm_find = QPushButton("FIND")
+
+        self.btn_drm_run = QPushButton("RUN")
+        self.btn_drm_run.setStyleSheet(run_button_style)
+        run_layout4 = QHBoxLayout()
+        run_layout4.addStretch()
+        run_layout4.addWidget(self.btn_drm_run)
+        run_layout4.addStretch()
+
+        drm_layout.addWidget(QLabel("- Target Dir :"), 0, 0)
+        drm_layout.addWidget(self.line_drm_target, 0, 1)
+        drm_layout.addWidget(self.btn_drm_find, 0, 2)
+
+        drm_layout.addLayout(run_layout4, 1, 0, 1, 3)
+        main_layout.addLayout(drm_layout)        
 
         self.setCentralWidget(main_widget)
 
     def connect_signals(self):
         self.btn_scan_find.clicked.connect(self.find_scan_dir)
-        self.btn_scan_set.clicked.connect(self.set_scan_output_dir) 
         self.btn_img_find.clicked.connect(self.find_img_target)
-        self.btn_img_set.clicked.connect(self.set_img_output)
         self.btn_pdf_find.clicked.connect(self.find_pdf_target)
-        self.btn_pdf_set.clicked.connect(self.set_pdf_output)
+        self.btn_drm_find.clicked.connect(self.find_drm_target)
+
         self.btn_scan_run.clicked.connect(self.run_scan_directory)
         self.btn_img_run.clicked.connect(self.run_convert_to_image)
         self.btn_pdf_run.clicked.connect(self.run_convert_to_pdf)
+        self.btn_drm_run.clicked.connect(self.run_remove_drm)
 
     # --- 파일/디렉토리 선택 ---
     def find_scan_dir(self):
         dir = QFileDialog.getExistingDirectory(self, "Select Target Directory")
         if dir:
             self.line_scan_target.setText(dir)
-
-    def set_scan_output_dir(self): 
-        """Output Dir를 선택하는 다이얼로그를 엽니다."""
-        dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        if dir:
-            self.line_scan_output.setText(dir)
 
     def find_img_target(self):
         # filters = "ppt, xls, doc, pdf (*.ppt *.pptx *.xls *.xlsx *.doc *.docx *.pdf)"
@@ -159,29 +160,34 @@ class AppWindow(QMainWindow):
         if dir:
             self.line_img_target.setText(dir)
 
-    def set_img_output(self):
-        dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
-        if dir:
-            self.line_img_output.setText(dir)
-
     def find_pdf_target(self):
         dir = QFileDialog.getExistingDirectory(self, "Select Target Directory")
         if dir:
             self.line_pdf_target.setText(dir)
 
-    def set_pdf_output(self):
-        file, _ = QFileDialog.getSaveFileName(self, "Set Output PDF File", filter="PDF (*.pdf)")
-        if file:
-            self.line_pdf_output.setText(file)
+    def find_drm_target(self):
+        dir = QFileDialog.getExistingDirectory(self, "Select Target Directory (DRM Files)")
+        if dir:
+            self.line_drm_target.setText(dir)
 
     # --- 실행 기능들 ---
     def run_scan_directory(self):
         target_dir = self.line_scan_target.text()
-        output_dir = self.line_scan_output.text()
-        if not target_dir or not output_dir:
-            self.show_error("Target, Output Directory 를 모두 지정해야 합니다.")
+        
+        if not target_dir:
+            self.show_error("Target Directory를 지정해야 합니다.")
             return
+
+        # Target Dir과 같은 레벨에 "_Output" 폴더 지정
+        # 예: C:\Work\Project -> C:\Work\Project_Output
+        target_dir = os.path.normpath(target_dir) # 경로 끝의 불필요한 슬래시 제거
+        output_dir = f"{target_dir}_Output"
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
         try:
+            # Output Dir 경로를 인자로 전달
             msg = core_functions.scan_directory(target_dir, output_dir)
             QMessageBox.information(self, "완료", msg)
         except Exception as e:
@@ -189,11 +195,17 @@ class AppWindow(QMainWindow):
 
     def run_convert_to_image(self):
         target_dir = self.line_img_target.text()
-        output_dir = self.line_img_output.text()
         
-        if not target_dir or not output_dir:
-            self.show_error("Target Dir과 Output Dir를 모두 지정해야 합니다.")
+        if not target_dir:
+            self.show_error("Target Dir를 지정해야 합니다.")
             return
+
+        # [수정] Target Dir과 같은 레벨에 "_Output" 폴더 지정
+        target_dir = os.path.normpath(target_dir)
+        output_dir = f"{target_dir}_Output"
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
         
         # Interval 값 체크
         try:
@@ -207,7 +219,8 @@ class AppWindow(QMainWindow):
 
         # 일괄 작업 경고 메시지
         reply = QMessageBox.warning(self, "일괄 변환 시작",
-            "지정된 폴더 내의 **모든 문서 파일**을 변환합니다.\n\n"
+            "지정된 폴더 내의 **모든 문서 파일**을 변환합니다.\n"
+            f"결과는 '{output_dir}' 폴더에 저장됩니다.\n\n" # [안내] 저장 위치 표시
             "**[주의사항]**\n"
             "1. 작업 중 **마우스/키보드 사용 금지** (창 포커스 유지 필요)\n"
             "2. Office/PDF 프로그램이 **주 모니터**에서 실행되어야 함\n"
@@ -219,10 +232,7 @@ class AppWindow(QMainWindow):
             return
 
         try:
-            # [변경] 폴더 일괄 처리 함수 호출
             msg = core_functions.process_directory_for_images(target_dir, output_dir, interval_sec)
-            
-            # 결과 메시지 표시
             QMessageBox.information(self, "작업 결과", msg)
             
         except Exception as e:
@@ -230,17 +240,53 @@ class AppWindow(QMainWindow):
 
     def run_convert_to_pdf(self):
         target_dir = self.line_pdf_target.text()
-        output_file = self.line_pdf_output.text()
-        if not target_dir or not output_file:
-            self.show_error("Target Dir 과 Output File 을 모두 지정해야 합니다.")
+        
+        if not target_dir:
+            self.show_error("Target Dir를 지정해야 합니다.")
             return
+
+        # [수정] Target Dir과 같은 레벨에 "_Output" 폴더 지정
+        target_dir = os.path.normpath(target_dir)
+        output_dir = f"{target_dir}_Output"
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
         try:
-            msg = core_functions.convert_to_pdf(target_dir, output_file)
+            msg = core_functions.convert_to_pdf(target_dir, output_dir)
             QMessageBox.information(self, "완료", msg)
         except Exception as e:
             self.show_error(str(e))
 
-    def show_error(self, message):
-        QMessageBox.critical(self, "Error", message)
+    def run_remove_drm(self):
+        target_dir = self.line_drm_target.text()
+        
+        if not target_dir:
+            self.show_error("Target Dir를 지정해야 합니다.")
+            return
 
-# [수정] 라이선스 관련 헬퍼 함수 및 if __name__ == "__main__" 블록 *제거*
+        # Target Dir과 같은 레벨에 "_Output" 폴더 지정
+        target_dir = os.path.normpath(target_dir)
+        output_dir = f"{target_dir}_Output"
+
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+            
+        # 경고 메시지
+        reply = QMessageBox.warning(self, "DRM 제거 시작",
+            "지정된 폴더 내의 파일들을 열어 **새 파일로 복사/저장**합니다.\n"
+            f"결과는 '{output_dir}' 폴더에 저장됩니다.\n\n"
+            "**[주의사항]**\n"
+            "1. 현재 PC에 파일 열기 권한이 있어야 합니다.\n"
+            "2. 작업 중 **마우스/키보드 사용을 자제**해 주세요.\n\n"
+            "진행하시겠습니까?",
+            QMessageBox.Ok | QMessageBox.Cancel)
+        
+        if reply == QMessageBox.Cancel:
+            return
+
+        try:
+            msg = core_functions.process_remove_drm(target_dir, output_dir)
+            QMessageBox.information(self, "완료", msg)
+        except Exception as e:
+            self.show_error(str(e))            

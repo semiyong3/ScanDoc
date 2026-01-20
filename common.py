@@ -1,7 +1,7 @@
 import hashlib
 import win32gui
 from PIL import ImageGrab
-
+import ctypes
 
 def _get_file_hash(filepath):
     """파일의 MD5 해시를 반환합니다."""
@@ -34,3 +34,15 @@ def capture_active_window(hwnd=None):
     screenshot = ImageGrab.grab(bbox=bbox)
     
     return screenshot
+
+def _clear_system_clipboard():
+    """
+    Office 프로그램 종료 시 '복사한 데이터를 유지하시겠습니까?' 
+    팝업이나 백그라운드 대기 현상을 막기 위해 클립보드를 비웁니다.
+    """
+    try:
+        if ctypes.windll.user32.OpenClipboard(None):
+            ctypes.windll.user32.EmptyClipboard()
+            ctypes.windll.user32.CloseClipboard()
+    except Exception:
+        pass
