@@ -669,7 +669,10 @@ def convert_to_pdf(target_root_dir, output_root_dir):
 # --- 4. Remove DRM (Content Copy & Save) ---
 
 def remove_drm_ppt(target_file, output_path):
-    """PPT 파일을 열어 슬라이드를 모두 복사한 뒤, 새 파일에 붙여넣어 저장"""
+    """
+    PPT 파일을 열어 페이지 설정(크기)을 맞춘 후,
+    슬라이드를 모두 복사하여 새 파일에 붙여넣어 저장
+    """
     powerpoint = None
     source_pres = None
     new_pres = None
@@ -677,18 +680,28 @@ def remove_drm_ppt(target_file, output_path):
     try:
         powerpoint = Dispatch("PowerPoint.Application")
         powerpoint.Visible = True
-        powerpoint.DisplayAlerts = 0  # 경고창 억제
+        powerpoint.DisplayAlerts = 0 
         
+        # 1. 원본 열기
         source_pres = powerpoint.Presentations.Open(os.path.abspath(target_file))
+        
+        # 2. 새 프레젠테이션 생성
         new_pres = powerpoint.Presentations.Add()
         
-        # 슬라이드 복사
+        # 원본의 슬라이드 크기(너비/높이)를 새 파일에 적용
+        source_setup = source_pres.PageSetup
+        new_setup = new_pres.PageSetup
+        
+        new_setup.SlideWidth = source_setup.SlideWidth
+        new_setup.SlideHeight = source_setup.SlideHeight
+        
+        # 3. 슬라이드 복사 및 붙여넣기
         if source_pres.Slides.Count > 0:
             source_pres.Slides.Range().Copy()
-            time.sleep(1.0)
+            time.sleep(1.0) # 클립보드 안정화 대기
             new_pres.Slides.Paste()
         
-        # 저장 전 원본 먼저 닫기 (충돌 방지)
+        # 저장 전 원본 먼저 닫기
         source_pres.Close()
         source_pres = None 
         
@@ -698,10 +711,7 @@ def remove_drm_ppt(target_file, output_path):
     except Exception as e:
         raise RuntimeError(f"PPT 처리 실패: {e}")
     finally:
-        # 클립보드 비우기
         _clear_system_clipboard()
-
-        # 명시적 자원 해제 및 종료
         if source_pres: 
             try: source_pres.Close()
             except: pass
@@ -756,7 +766,10 @@ def remove_drm_excel(target_file, output_path):
             except: pass
 
 def remove_drm_word(target_file, output_path):
-    """Word 파일을 열어 전체 내용을 복사하여 새 문서에 붙여넣고 저장"""
+    """
+    Word 파일을 열어 페이지 설정을 맞춘 후,
+    전체 내용을 복사하여 새 문서에 붙여넣고 저장
+    """
     word = None
     source_doc = None
     new_doc = None
@@ -767,26 +780,44 @@ def remove_drm_word(target_file, output_path):
         
         source_doc = word.Documents.Open(os.path.abspath(target_file))
         
-        word.Selection.WholeStory()
-        word.Selection.Copy()
+        # 새 문서 생성
+        new_doc = word.Documents.Add()
+
+        # [수정] 페이지 설정(PageSetup) 동기화 (첫 번째 섹션 기준)
+        try:
+            source_setup = source_doc.PageSetup
+            new_setup = new_doc.PageSetup
+            
+            new_setup.Orientation = source_setup.Orientation  # 가로/세로 방향
+            new_setup.PageWidth = source_setup.PageWidth      # 용지 너비
+            new_setup.PageHeight = source_setup.PageHeight    # 용지 높이
+            
+            # 여백 설정 복사 (필요 시)
+            new_setup.TopMargin = source_setup.TopMargin
+            new_setup.BottomMargin = source_setup.BottomMargin
+            new_setup.LeftMargin = source_setup.LeftMargin
+            new_setup.RightMargin = source_setup.RightMargin
+        except Exception as setup_err:
+            print(f"[WARN] Word 페이지 설정 복사 중 일부 실패(무시): {setup_err}")
+        
+        # 내용 복사
+        source_doc.Content.Copy() # WholeStory보다 Content.Copy가 안정적일 수 있음
         time.sleep(0.5)
         
-        new_doc = word.Documents.Add()
+        # 붙여넣기
         new_doc.Range().Paste()
         
-        # 저장 전 원본 닫기
+        # 원본 닫기
         source_doc.Close(False)
         source_doc = None
         
-        new_doc.SaveAs(os.path.abspath(output_path), FileFormat=16) # Default docx
+        new_doc.SaveAs(os.path.abspath(output_path), FileFormat=16) # docx
         print(f"[OK] Word 저장 완료: {output_path}")
         
     except Exception as e:
         raise RuntimeError(f"Word 처리 실패: {e}")
     finally:
-        # 클립보드 비우기
         _clear_system_clipboard()
-
         if source_doc: 
             try: source_doc.Close(False)
             except: pass
@@ -796,7 +827,7 @@ def remove_drm_word(target_file, output_path):
         if word: 
             try: word.Quit()
             except: pass
-
+            
 def remove_drm_pdf_via_image(target_file, output_path):
     """
     PDF -> 이미지 캡처(기능2) -> PDF 병합(기능3) 방식을 사용하여 재생성
