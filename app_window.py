@@ -290,3 +290,6 @@ class AppWindow(QMainWindow):
             QMessageBox.information(self, "완료", msg)
         except Exception as e:
             self.show_error(str(e))            
+    
+    def show_error(self, message):
+        QMessageBox.critical(self, "Error", message)
